@@ -45,7 +45,7 @@ async def get_record(record_id: str):
             .execute()
         )
         return {
-            "recorfd": result.data
+            "record": result.data
         }
     except Exception as error:
         raise HTTPException(
