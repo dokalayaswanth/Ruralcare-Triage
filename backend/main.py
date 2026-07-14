@@ -3,7 +3,7 @@ from dotenv import load_dotenv
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-from routers import records, triage, audit
+from routers import records, triage, audit, rag
 
 load_dotenv()
 
@@ -22,3 +22,4 @@ async def root():
 app.include_router(records.router)
 app.include_router(triage.router)
 app.include_router(audit.router)
+app.include_router(rag.router)
