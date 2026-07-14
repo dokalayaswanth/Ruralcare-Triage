@@ -7,150 +7,87 @@ from models.schema import (
     ConfidenceLevel,
 )
 from services.supabase_service import supabase
+from services.llm_services import run_triage_llm
+from services.rag_service import retrieve_clinical_evidence
 
-
-def calculate_temporary_triage(request: TriageRequest) -> dict:
+def build_rag_query(request: TriageRequest) -> str:
     """
-    Temporary rule-based triage logic.
-
-    This is only for the first working backend version.
-    Later, we will replace this with:
-    RAG retrieval + Groq LLM decision.
+    Build a search query from the patient presentation.
+    This query is used to retrieve relevant guideline chunks from FAISS.
     """
 
-    chief_complaint = request.chief_complaint.lower()
-    symptom_text = " ".join([item.symptom.lower() for item in request.symptoms])
+    symptom_parts = []
 
-    combined_text = f"{chief_complaint} {symptom_text}"
+    for symptom in request.symptoms:
+        symptom_parts.append(
+            f"{symptom.symptom} severity {symptom.severity} "
+            f"duration {symptom.duration} onset {symptom.onset}"
+        )
 
-    has_severe_symptom = any(
-        item.severity == "severe"
-        for item in request.symptoms
-    )
-
-    has_sudden_onset = any(
-        item.onset == "sudden"
-        for item in request.symptoms
-    )
-
-    oxygen_saturation = None
-    heart_rate = None
-    temperature_f = None
+    vitals_parts = []
 
     if request.vitals:
-        oxygen_saturation = request.vitals.oxygen_saturation
-        heart_rate = request.vitals.heart_rate
-        temperature_f = request.vitals.temperature_f
+        if request.vitals.blood_pressure_systolic:
+            vitals_parts.append(
+                f"blood pressure {request.vitals.blood_pressure_systolic}/"
+                f"{request.vitals.blood_pressure_diastolic or '?'}"
+            )
 
-    emergency_keywords = [
-        "chest pain",
-        "stroke",
-        "weakness on one side",
-        "face drooping",
-        "trouble speaking",
-        "shortness of breath",
-        "severe bleeding",
-        "loss of consciousness",
-        "seizure",
-    ]
+        if request.vitals.heart_rate:
+            vitals_parts.append(f"heart rate {request.vitals.heart_rate}")
 
-    urgent_keywords = [
-        "fever",
-        "abdominal pain",
-        "vomiting",
-        "dehydration",
-        "infection",
-        "wheezing",
-        "dizziness",
-    ]
+        if request.vitals.temperature_f:
+            vitals_parts.append(f"temperature {request.vitals.temperature_f} Fahrenheit")
 
-    has_emergency_keyword = any(
-        keyword in combined_text
-        for keyword in emergency_keywords
-    )
+        if request.vitals.oxygen_saturation:
+            vitals_parts.append(f"oxygen saturation {request.vitals.oxygen_saturation}")
 
-    has_urgent_keyword = any(
-        keyword in combined_text
-        for keyword in urgent_keywords
-    )
+    query = f"""
+Chief complaint: {request.chief_complaint}
+Symptoms: {"; ".join(symptom_parts)}
+Vitals: {"; ".join(vitals_parts)}
+Age: {request.patient_age}
+Medical history: {request.medical_history or "none"}
+""".strip()
 
-    if (
-        has_emergency_keyword
-        or oxygen_saturation is not None and oxygen_saturation < 90
-        or has_severe_symptom and has_sudden_onset
-    ):
-        return {
-            "urgency_tier": UrgencyTier.EMERGENCY,
-            "urgency_score": 90,
-            "confidence_level": ConfidenceLevel.MEDIUM,
-            "ai_reasoning": (
-                "The presentation includes possible emergency red flags such as "
-                "severe symptoms, sudden onset, chest pain, neurologic symptoms, "
-                "or low oxygen saturation. This should be treated as potentially "
-                "life-threatening until reviewed by a clinician."
-            ),
-            "recommended_action": (
-                "Activate emergency protocol or arrange immediate emergency evaluation."
-            ),
-        }
-
-    if (
-        has_urgent_keyword
-        or heart_rate is not None and heart_rate > 120
-        or temperature_f is not None and temperature_f >= 101
-        or has_severe_symptom
-    ):
-        return {
-            "urgency_tier": UrgencyTier.URGENT,
-            "urgency_score": 65,
-            "confidence_level": ConfidenceLevel.MEDIUM,
-            "ai_reasoning": (
-                "The presentation includes symptoms or vital signs that may require "
-                "same-day medical evaluation, but no immediate life-threatening "
-                "red flag was clearly identified."
-            ),
-            "recommended_action": (
-                "Schedule same-day clinician or specialist review."
-            ),
-        }
-
-    return {
-        "urgency_tier": UrgencyTier.ROUTINE,
-        "urgency_score": 25,
-        "confidence_level": ConfidenceLevel.HIGH,
-        "ai_reasoning": (
-            "The reported symptoms appear mild and do not currently show obvious "
-            "emergency or same-day urgent red flags based on the available intake data."
-        ),
-        "recommended_action": (
-            "Schedule routine follow-up within 1 to 7 days, with instructions to seek "
-            "urgent care if symptoms worsen."
-        ),
-    }
+    return query
 
 
-async def run_temporary_triage_pipeline(request: TriageRequest) -> TriageResponse:
+async def run_triage_pipeline(request: TriageRequest) -> TriageResponse:
     """
-    First real triage pipeline:
-    1. Validate request through Pydantic
-    2. Calculate temporary triage result
-    3. Save case to Supabase
-    4. Write audit log
-    5. Return structured triage response
+    Full AI triage pipeline:
+    1. Build RAG query
+    2. Retrieve clinical evidence from FAISS
+    3. Send patient data + evidence to Groq LLM
+    4. Save result to records table
+    5. Save audit log
+    6. Return triage response
     """
 
-    triage_result = calculate_temporary_triage(request)
+    rag_query = build_rag_query(request)
 
-    evidence_list = [
-        {
-            "source": "Temporary Rule-Based Triage",
-            "content": (
-                "This result was generated by temporary backend rules. "
-                "RAG and Groq LLM evidence will be added in the next AI phase."
-            ),
-            "relevance_score": 1.0,
-        }
-    ]
+    evidence_chunks = retrieve_clinical_evidence(
+        query=rag_query,
+        k=4,
+    )
+
+    patient_data = request.model_dump()
+
+    llm_result = run_triage_llm(
+        patient_data=patient_data,
+        evidence_chunks=evidence_chunks,
+    )
+
+    evidence_list = []
+
+    for source, content, score in evidence_chunks:
+        evidence_list.append(
+            {
+                "source": source,
+                "content": content,
+                "relevance_score": round(float(score), 4),
+            }
+        )
 
     case_data = {
         "patient_name": request.patient_name,
@@ -165,11 +102,11 @@ async def run_temporary_triage_pipeline(request: TriageRequest) -> TriageRespons
         "medical_history": request.medical_history,
         "current_medications": request.current_medications,
         "allergies": request.allergies,
-        "urgency_tier": triage_result["urgency_tier"].value,
-        "urgency_score": triage_result["urgency_score"],
-        "confidence_level": triage_result["confidence_level"].value,
-        "ai_reasoning": triage_result["ai_reasoning"],
-        "recommended_action": triage_result["recommended_action"],
+        "urgency_tier": llm_result["urgency_tier"],
+        "urgency_score": llm_result["urgency_score"],
+        "confidence_level": llm_result["confidence_level"],
+        "ai_reasoning": llm_result["ai_reasoning"],
+        "recommended_action": llm_result["recommended_action"],
         "retrieved_evidence": evidence_list,
         "status": "PENDING",
     }
@@ -182,22 +119,20 @@ async def run_temporary_triage_pipeline(request: TriageRequest) -> TriageRespons
     )
 
     if not case_result.data:
-        raise RuntimeError("Failed to insert case into Supabase.")
+        raise RuntimeError("Failed to insert record into Supabase.")
 
-    case_id = case_result.data[0]["id"]
+    record_id = case_result.data[0]["id"]
 
     audit_data = {
-        "case_id": case_id,
+        "case_id": record_id,
         "action": "AI_TRIAGE",
         "details": {
-            "pipeline_stage": "temporary_rule_based_triage",
-            "triage_result": {
-                "urgency_tier": triage_result["urgency_tier"].value,
-                "urgency_score": triage_result["urgency_score"],
-                "confidence_level": triage_result["confidence_level"].value,
-                "ai_reasoning": triage_result["ai_reasoning"],
-                "recommended_action": triage_result["recommended_action"],
-            },
+            "pipeline_stage": "rag_groq_triage",
+            "rag_query": rag_query,
+            "retrieved_chunks_count": len(evidence_chunks),
+            "retrieved_evidence": evidence_list,
+            "llm_model": "llama3-70b-8192",
+            "llm_result": llm_result,
             "timestamp": datetime.now(timezone.utc).isoformat(),
         },
     }
@@ -205,12 +140,12 @@ async def run_temporary_triage_pipeline(request: TriageRequest) -> TriageRespons
     supabase.table("audit_log").insert(audit_data).execute()
 
     return TriageResponse(
-        case_id=case_id,
-        urgency_tier=triage_result["urgency_tier"],
-        urgency_score=triage_result["urgency_score"],
-        confidence_level=triage_result["confidence_level"],
-        ai_reasoning=triage_result["ai_reasoning"],
-        recommended_action=triage_result["recommended_action"],
+        case_id=record_id,
+        urgency_tier=llm_result["urgency_tier"],
+        urgency_score=llm_result["urgency_score"],
+        confidence_level=llm_result["confidence_level"],
+        ai_reasoning=llm_result["ai_reasoning"],
+        recommended_action=llm_result["recommended_action"],
         retrieved_evidence=[
             EvidenceChunk(**item)
             for item in evidence_list
