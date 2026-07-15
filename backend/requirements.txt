@@ -1,13 +1,14 @@
-fastapi==0.111.0
-uvicorn[standard]==0.30.1
-pydantic==2.7.1
-python-dotenv==1.0.1
-supabase==2.4.6
-httpx==0.27.0
+fastapi
+uvicorn[standard]
+pydantic
+python-dotenv
+supabase
+httpx
 
-langchain==0.2.5
-langchain-community==0.2.5
-langchain-groq==0.1.6
-faiss-cpu==1.8.0
-sentence-transformers==3.0.1
-pypdf==4.2.0
+langchain
+langchain-community
+langchain-groq
+faiss-cpu
+sentence-transformers
+pypdf
+langchain_text_splitters
