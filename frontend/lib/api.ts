@@ -5,6 +5,19 @@ import {
   TriageResponse,
   UrgencyTier,
 } from "@/types";
+import { getCurrentSession } from "@/lib/auth";
+
+async function getAuthHeaders(): Promise<Record<string, string>> {
+  const session = await getCurrentSession();
+
+  if (!session?.access_token) {
+    return {};
+  }
+
+  return {
+    Authorization: `Bearer ${session.access_token}`,
+  };
+}
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://127.0.0.1:8000";
 
@@ -66,8 +79,13 @@ export async function getRecords(params?: {
 }
 
 export async function getRecord(recordId: string): Promise<PatientRecord> {
+  const authHeaders = await getAuthHeaders();
+
   const response = await fetch(`${API_URL}/records/${recordId}`, {
     cache: "no-store",
+    headers: {
+      ...authHeaders,
+    },
   });
 
   const data = await handleResponse<
@@ -96,6 +114,7 @@ export async function overrideRecord(
     method: "PATCH",
     headers: {
       "Content-Type": "application/json",
+      ...(await getAuthHeaders()),
     },
     body: JSON.stringify(payload),
   });
@@ -108,6 +127,9 @@ export async function resolveRecord(
 ): Promise<{ message: string; record: PatientRecord }> {
   const response = await fetch(`${API_URL}/records/${recordId}/resolve`, {
     method: "PATCH",
+    headers: {
+      ...(await getAuthHeaders()),
+    },
   });
 
   return handleResponse<{ message: string; record: PatientRecord }>(response);
@@ -116,11 +138,34 @@ export async function resolveRecord(
 export async function getAuditLog(
   recordId: string
 ): Promise<{ count: number; audit_log: AuditLogEntry[] }> {
+  const authHeaders = await getAuthHeaders();
+
   const response = await fetch(`${API_URL}/audit/${recordId}`, {
     cache: "no-store",
+    headers: {
+      ...authHeaders,
+    },
   });
 
   return handleResponse<{ count: number; audit_log: AuditLogEntry[] }>(
     response
   );
+}
+
+export async function getPublicTriageResult(
+  recordId: string
+): Promise<PatientRecord> {
+  const response = await fetch(`${API_URL}/triage/result/${recordId}`, {
+    cache: "no-store",
+  });
+
+  const data = await handleResponse<PatientRecord | { record: PatientRecord }>(
+    response
+  );
+
+  if ("record" in data) {
+    return data.record;
+  }
+
+  return data;
 }

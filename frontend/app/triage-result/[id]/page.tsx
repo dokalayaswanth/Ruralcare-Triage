@@ -4,7 +4,7 @@ import Link from "next/link";
 import { useEffect, useState } from "react";
 import { useParams } from "next/navigation";
 
-import { getRecord } from "@/lib/api";
+import { getPublicTriageResult } from "@/lib/api";
 import { PatientRecord } from "@/types";
 import { TriageResultCard } from "@/components/triage/TriageResultCard";
 import { LoadingSpinner } from "@/components/shared/LoadingSpinner";
@@ -36,7 +36,7 @@ export default function TriageResultPage() {
           return;
         }
 
-        const data = await getRecord(recordId);
+        const data = await getPublicTriageResult(recordId);
         setRecord(data);
       } catch (loadError) {
         const message =

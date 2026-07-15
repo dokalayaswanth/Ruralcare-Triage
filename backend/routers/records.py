@@ -1,7 +1,9 @@
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, Depends
 from services.supabase_service import supabase
 from datetime import datetime, timezone
 from models.schema import CaseOverrideRequest
+
+from services.auth_service import require_specialist
 
 # Create router for all /cases endpoints
 router = APIRouter(
@@ -11,7 +13,7 @@ router = APIRouter(
 
 
 @router.get("/")
-async def list_cases():
+async def list_cases(user=Depends(require_specialist)):
     try:
         result = (
             supabase
@@ -34,7 +36,7 @@ async def list_cases():
     
 
 @router.get("/{record_id}")
-async def get_record(record_id: str):
+async def get_record(record_id: str, user=Depends(require_specialist)):
     try:
         result = (
             supabase.
@@ -55,20 +57,22 @@ async def get_record(record_id: str):
 
 
 @router.patch("/{record_id}/override")
-async def override_case(record_id: str, override: CaseOverrideRequest):
+async def override_case(
+    record_id: str,
+    override: CaseOverrideRequest,
+    user=Depends(require_specialist),
+):
     """
     Clinician overrides the AI triage decision.
-
-    Example:
-    AI says URGENT, clinician changes to EMERGENCY with reason.
     """
 
     try:
         update_data = {
             "override_tier": override.override_tier.value,
             "override_reason": override.override_reason,
+            "override_by": user.id,
             "override_at": datetime.now(timezone.utc).isoformat(),
-            "status": "OVERRIDDEN"
+            "status": "OVERRIDDEN",
         }
 
         result = (
@@ -82,42 +86,49 @@ async def override_case(record_id: str, override: CaseOverrideRequest):
         if not result.data:
             raise HTTPException(
                 status_code=404,
-                detail="Record not found or override failed"
+                detail="Record not found or override failed",
             )
 
         audit_data = {
             "case_id": record_id,
             "action": "OVERRIDE",
+            "performed_by": user.id,
             "details": {
                 "override_tier": override.override_tier.value,
                 "override_reason": override.override_reason,
-                "timestamp": datetime.now(timezone.utc).isoformat()
-            }
+                "timestamp": datetime.now(timezone.utc).isoformat(),
+            },
         }
 
         supabase.table("audit_log").insert(audit_data).execute()
 
         return {
             "message": "Record overridden successfully",
-            "record": result.data[0]
+            "record": result.data[0],
         }
+
+    except HTTPException:
+        raise
 
     except Exception as error:
         raise HTTPException(
             status_code=500,
-            detail=f"Failed to override record: {str(error)}"
+            detail=f"Failed to override record: {str(error)}",
         )
 
 
 @router.patch("/{record_id}/resolve")
-async def resolve_case(record_id: str):
+async def resolve_case(
+    record_id: str,
+    user=Depends(require_specialist),
+):
     """
     Mark a patient record as resolved.
     """
 
     try:
         update_data = {
-            "status": "RESOLVED"
+            "status": "RESOLVED",
         }
 
         result = (
@@ -131,26 +142,30 @@ async def resolve_case(record_id: str):
         if not result.data:
             raise HTTPException(
                 status_code=404,
-                detail="Record not found or resolve failed"
+                detail="Record not found or resolve failed",
             )
 
         audit_data = {
             "case_id": record_id,
             "action": "RESOLVE",
+            "performed_by": user.id,
             "details": {
-                "timestamp": datetime.now(timezone.utc).isoformat()
-            }
+                "timestamp": datetime.now(timezone.utc).isoformat(),
+            },
         }
 
         supabase.table("audit_log").insert(audit_data).execute()
 
         return {
             "message": "Record resolved successfully",
-            "record": result.data[0]
+            "record": result.data[0],
         }
+
+    except HTTPException:
+        raise
 
     except Exception as error:
         raise HTTPException(
             status_code=500,
-            detail=f"Failed to resolve record: {str(error)}"
+            detail=f"Failed to resolve record: {str(error)}",
         )

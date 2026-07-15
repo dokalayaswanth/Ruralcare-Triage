@@ -8,6 +8,7 @@ import { supabase } from "@/lib/supabase";
 import { PatientRecord, UrgencyTier } from "@/types";
 import { CaseCard } from "@/components/specialist/CaseCard";
 import { LoadingSpinner } from "@/components/shared/LoadingSpinner";
+import {getCurrentSession} from "@/lib/auth";
 
 type FilterValue = "ALL" | UrgencyTier;
 type StatusFilterValue = "ALL" | "PENDING" | "OVERRIDDEN" | "RESOLVED";
@@ -58,78 +59,64 @@ export function PatientQueue() {
     }
   }
 
-  useEffect(() => {
-  loadRecords(true);
+useEffect(() => {
+  let channel: ReturnType<typeof supabase.channel> | null = null;
+  let isMounted = true;
 
-  const channel = supabase
-    .channel("records_realtime")
-    .on(
-      "postgres_changes",
-      {
-        event: "*",
-        schema: "public",
-        table: "records",
-      },
-      (payload) => {
-        console.log("Realtime payload received:", payload);
+  async function setupRealtime() {
+    await loadRecords(true);
 
-        setLastUpdated(new Date());
+    const session = await getCurrentSession();
 
-        if (payload.eventType === "INSERT") {
-          const newRecord = payload.new as PatientRecord;
+    if (!session?.access_token) {
+      console.log("No Supabase session found for realtime.");
+      setRealtimeStatus("disconnected");
+      return;
+    }
 
-          setRecords((previous) => {
-            const alreadyExists = previous.some(
-              (record) => record.id === newRecord.id
-            );
+    if (!isMounted) {
+      return;
+    }
 
-            if (alreadyExists) {
-              return sortRecords(
-                previous.map((record) =>
-                  record.id === newRecord.id ? newRecord : record
-                )
-              );
-            }
-
-            return sortRecords([newRecord, ...previous]);
-          });
+    channel = supabase
+      .channel(`records_realtime_${Date.now()}`)
+      .on(
+        "postgres_changes",
+        {
+          event: "*",
+          schema: "public",
+          table: "records",
+        },
+        async (payload) => {
+          console.log("Realtime payload received:", payload);
+          await loadRecords(false);
         }
+      )
+      .subscribe((status) => {
+        console.log("Realtime status:", status);
 
-        if (payload.eventType === "UPDATE") {
-          const updatedRecord = payload.new as PatientRecord;
-
-          setRecords((previous) =>
-            sortRecords(
-              previous.map((record) =>
-                record.id === updatedRecord.id ? updatedRecord : record
-              )
-            )
-          );
+        if (status === "SUBSCRIBED") {
+          setRealtimeStatus("connected");
+        } else if (
+          status === "CHANNEL_ERROR" ||
+          status === "TIMED_OUT" ||
+          status === "CLOSED"
+        ) {
+          setRealtimeStatus("disconnected");
+        } else {
+          setRealtimeStatus("connecting");
         }
+      });
+  }
 
-        if (payload.eventType === "DELETE") {
-          const deletedRecord = payload.old as Partial<PatientRecord>;
-
-          setRecords((previous) =>
-            previous.filter((record) => record.id !== deletedRecord.id)
-          );
-        }
-      }
-    )
-    .subscribe((status) => {
-      console.log("Realtime status:", status);
-
-      if (status === "SUBSCRIBED") {
-        setRealtimeStatus("connected");
-      } else if (status === "CHANNEL_ERROR" || status === "TIMED_OUT") {
-        setRealtimeStatus("disconnected");
-      } else {
-        setRealtimeStatus("connecting");
-      }
-    });
+  setupRealtime();
 
   return () => {
-    supabase.removeChannel(channel);
+    isMounted = false;
+
+    if (channel) {
+      supabase.removeChannel(channel);
+    }
   };
 }, []);
 

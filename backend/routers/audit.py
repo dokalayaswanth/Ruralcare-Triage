@@ -1,5 +1,6 @@
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, Depends
 from services.supabase_service import supabase
+from services.auth_service import require_specialist
 
 router = APIRouter(
     prefix="/audit",
@@ -8,7 +9,7 @@ router = APIRouter(
 
 
 @router.get("/{record_id}")
-async def get_audit_log(record_id: str):
+async def get_audit_log(record_id: str, user=Depends(require_specialist)):
     """
     Get full audit history for one patient record.
     """

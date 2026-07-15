@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { AuthStatus } from "@/components/shared/AuthStatus";
 
 export function Navbar() {
   return (
@@ -12,12 +13,15 @@ export function Navbar() {
           <Link href="/intake" className="text-slate-700 hover:text-slate-950">
             Intake
           </Link>
+
           <Link
             href="/specialist"
             className="text-slate-700 hover:text-slate-950"
           >
             Specialist Dashboard
           </Link>
+
+          <AuthStatus />
         </nav>
       </div>
     </header>

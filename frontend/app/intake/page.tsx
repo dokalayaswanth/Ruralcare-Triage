@@ -8,7 +8,7 @@ export default function IntakePage() {
           Patient Intake
         </p>
 
-        <h1 className="mt-2 text-3xl font-bold text-slate-950">
+        <h1 className="mt-2 text-3xl font-bold text-slate-350">
           Submit a new triage record
         </h1>
 
