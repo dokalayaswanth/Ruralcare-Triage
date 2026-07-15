@@ -23,7 +23,7 @@ async def list_cases():
 
         return {
             "count": len(result.data),
-            "cases": result.data
+            "records": result.data
         }
 
     except Exception as error:
