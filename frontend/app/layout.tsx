@@ -1,6 +1,8 @@
 import type { Metadata } from "next";
 import "./globals.css";
 import { Navbar } from "@/components/shared/navbar";
+import { SafetyBanner } from "@/components/shared/SafetyBanner";
+
 
 export const metadata: Metadata = {
   title: "RuralCare Triage",
@@ -16,6 +18,7 @@ export default function RootLayout({
     <html lang="en">
       <body className="min-h-screen bg-slate-50 text-slate-950">
         <Navbar />
+        <SafetyBanner />
         <main>{children}</main>
       </body>
     </html>

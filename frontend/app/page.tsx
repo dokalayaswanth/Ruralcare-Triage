@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { Activity, ClipboardList, ShieldCheck } from "lucide-react";
+import { BackendHealthCard } from "@/components/shared/BackendHealthCard";
 
 export default function HomePage() {
   return (
@@ -8,13 +9,15 @@ export default function HomePage() {
         <div>
           <p className="mb-3 text-sm font-semibold uppercase tracking-wide text-blue-700">
             AI-powered rural healthcare triage
-          </p>
+          </p><div className="mt-5 mb-5">
+          <BackendHealthCard />
+        </div>
 
-          <h1 className="text-4xl font-bold tracking-tight text-slate-950 md:text-5xl">
+          <h1 className="text-4xl font-bold tracking-tight text-slate-100 md:text-5xl">
             Faster symptom intake and smarter specialist review.
           </h1>
 
-          <p className="mt-5 text-lg leading-8 text-slate-600">
+          <p className="mt-5 text-lg leading-8 text-slate-100 text-white">
             RuralCare Triage collects patient symptoms, retrieves relevant
             clinical guidance, and generates a structured urgency
             recommendation for clinician review.
@@ -36,11 +39,13 @@ export default function HomePage() {
             </Link>
           </div>
 
-          <p className="mt-5 text-xs text-slate-500">
+          <p className="mt-5 text-xs text-slate-500 text-white">
             Educational portfolio project only. Not a replacement for licensed
             clinical judgment or emergency care.
           </p>
         </div>
+
+        
 
         <div className="rounded-2xl border bg-white p-6 shadow-sm">
           <div className="grid gap-4">

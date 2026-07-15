@@ -32,7 +32,12 @@ async def root():
     return {
         "message": "Welcome to the RuralcareTriage Backend API!"
     }
-
+@app.get("/health")
+async def health():
+    return {
+        "status": "healthy",
+        "message": "RuralcareTriage Backend API is running smoothly."
+    }
 app.include_router(records.router)
 app.include_router(triage.router)
 app.include_router(audit.router)
