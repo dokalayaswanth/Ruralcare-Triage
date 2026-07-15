@@ -7,7 +7,6 @@ import { ConfidenceMeter } from "@/components/triage/ConfidenceMeter";
 import { EvidencePanel } from "@/components/triage/EvidencePanel";
 
 export function TriageResultCard({ record }: { record: PatientRecord }) {
-    record = record.record
   return (
     <div className="space-y-6">
       <section className="rounded-2xl border bg-white p-6 shadow-sm">

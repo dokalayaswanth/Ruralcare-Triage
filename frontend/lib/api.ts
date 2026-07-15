@@ -70,7 +70,19 @@ export async function getRecord(recordId: string): Promise<PatientRecord> {
     cache: "no-store",
   });
 
-  return handleResponse<PatientRecord>(response);
+  const data = await handleResponse<
+    PatientRecord | { record: PatientRecord } | { case: PatientRecord }
+  >(response);
+
+  if ("record" in data) {
+    return data.record;
+  }
+
+  if ("case" in data) {
+    return data.case;
+  }
+
+  return data;
 }
 
 export async function overrideRecord(
@@ -80,7 +92,7 @@ export async function overrideRecord(
     override_reason: string;
   }
 ): Promise<{ message: string; record: PatientRecord }> {
-  const response = await fetch(`${API_URL}/cases/${recordId}/override`, {
+  const response = await fetch(`${API_URL}/records/${recordId}/override`, {
     method: "PATCH",
     headers: {
       "Content-Type": "application/json",
@@ -94,7 +106,7 @@ export async function overrideRecord(
 export async function resolveRecord(
   recordId: string
 ): Promise<{ message: string; record: PatientRecord }> {
-  const response = await fetch(`${API_URL}/cases/${recordId}/resolve`, {
+  const response = await fetch(`${API_URL}/records/${recordId}/resolve`, {
     method: "PATCH",
   });
 
